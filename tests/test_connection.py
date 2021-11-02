@@ -8,6 +8,7 @@
 
 import sys
 import os
+import time
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.join(current_dir, '..')
@@ -24,8 +25,8 @@ class TestConnection(TestCase):
         try:
             conn = Connection()
             conn.open('127.0.0.1', 9669, 1000)
-            session_id = conn.authenticate('root', 'nebula')
-            assert session_id != 0
+            auth_result = conn.authenticate('root', 'nebula')
+            assert auth_result.get_session_id() != 0
             conn.close()
         except Exception as ex:
             assert False, ex
@@ -34,11 +35,14 @@ class TestConnection(TestCase):
         try:
             conn = Connection()
             conn.open('127.0.0.1', 9669, 1000)
-            session_id = conn.authenticate('root', 'nebula')
+            auth_result = conn.authenticate('root', 'nebula')
+            session_id = auth_result.get_session_id()
             assert session_id != 0
             resp = conn.execute(session_id, 'SHOW SPACES')
             assert resp.error_code == ttypes.ErrorCode.SUCCEEDED, resp.error_msg
             conn.signout(session_id)
+            # the session delete later
+            time.sleep(12)
             resp = conn.execute(session_id, 'SHOW SPACES')
             assert resp.error_code != ttypes.ErrorCode.SUCCEEDED
             conn.close()
@@ -48,8 +52,8 @@ class TestConnection(TestCase):
     def test_close(self):
         conn = Connection()
         conn.open('127.0.0.1', 9669, 1000)
-        session_id = conn.authenticate('root', 'nebula')
-        assert session_id != 0
+        auth_result = conn.authenticate('root', 'nebula')
+        assert auth_result.get_session_id() != 0
         conn.close()
         try:
             conn.authenticate('root', 'nebula')

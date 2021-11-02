@@ -6,38 +6,35 @@
 # This source code is licensed under Apache 2.0 License,
 # attached with Common Clause Condition 1.0, found in the LICENSES directory.
 
-import sys
-import os
-import time
-
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.join(current_dir, '..')
-sys.path.insert(0, root_dir)
-
-from nebula2.Config import Config
-from nebula2.common.ttypes import (
-    DateTime,
-    Date,
-    Time,
-    ErrorCode
-)
-
+from unittest import TestCase
+from nebula2.gclient.net import ConnectionPool
 from nebula2.data.DataObject import (
     DateTimeWrapper,
     DateWrapper,
     TimeWrapper,
     Null
 )
+from nebula2.common.ttypes import (
+    DateTime,
+    Date,
+    Time,
+    ErrorCode
+)
+from nebula2.Config import Config
+import sys
+import os
+import time
+import json
 
-from nebula2.gclient.net import ConnectionPool
-
-from unittest import TestCase
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.join(current_dir, '..')
+sys.path.insert(0, root_dir)
 
 
 class TestBaseCase(TestCase):
     pool = None
     session = None
+
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
@@ -48,7 +45,7 @@ class TestBaseCase(TestCase):
         cls.session = cls.pool.get_session('root', 'nebula')
         resp = cls.session.execute(
             '''
-            CREATE SPACE IF NOT EXISTS test_data; 
+            CREATE SPACE IF NOT EXISTS test_data(vid_type=FIXED_STRING(8));
             USE test_data;
             CREATE TAG IF NOT EXISTS person(name string, age int8, grade int16, 
             friends int32, book_num int64, birthday datetime, 
@@ -70,14 +67,14 @@ class TestBaseCase(TestCase):
             "is_girl, child_name, expend, first_out_city) VALUES"
             "'Bob':('Bob', 10, 3, 10, 100, datetime('2010-09-10T10:08:02'),"
             "date('2017-09-10'), time('07:10:00'), "
-            "1000.0, false, 'Hello World!', 100.0, 1111)," 
+            "1000.0, false, 'Hello World!', 100.0, 1111),"
             "'Lily':('Lily', 9, 3, 10, 100, datetime('2010-09-10T10:08:02'), "
             "date('2017-09-10'), time('07:10:00'), "
-            "1000.0, false, 'Hello World!', 100.0, 1111)," 
+            "1000.0, false, 'Hello World!', 100.0, 1111),"
             "'Tom':('Tom', 10, 3, 10, 100, datetime('2010-09-10T10:08:02'), "
             "date('2017-09-10'), time('07:10:00'), "
-            "1000.0, false, 'Hello World!', 100.0, 1111)," 
-            "'Jerry':('Jerry', 9, 3, 10, 100, datetime('2010-09-10T10:08:02')," 
+            "1000.0, false, 'Hello World!', 100.0, 1111),"
+            "'Jerry':('Jerry', 9, 3, 10, 100, datetime('2010-09-10T10:08:02'),"
             "date('2017-09-10'), time('07:10:00'), "
             "1000.0, false, 'Hello World!', 100.0, 1111), "
             "'John':('John', 10, 3, 10, 100, datetime('2010-09-10T10:08:02'), "
@@ -95,7 +92,7 @@ class TestBaseCase(TestCase):
             "INSERT EDGE like(likeness) VALUES "
             "'Bob'->'Lily':(80.0), "
             "'Bob'->'Tom':(70.0), "
-            "'Jerry'->'Lily':(84.0)," 
+            "'Jerry'->'Lily':(84.0),"
             "'Tom'->'Jerry':(68.3), "
             "'Bob'->'John':(97.2)")
         assert resp.is_succeeded(), resp.error_msg()
@@ -103,7 +100,7 @@ class TestBaseCase(TestCase):
             "INSERT EDGE friend(start_year, end_year) VALUES "
             "'Bob'->'Lily':(2018, 2020), "
             "'Bob'->'Tom':(2018, 2020), "
-            "'Jerry'->'Lily':(2018, 2020)," 
+            "'Jerry'->'Lily':(2018, 2020),"
             "'Tom'->'Jerry':(2018, 2020), "
             "'Bob'->'John':(2018, 2020)")
         assert resp.is_succeeded(), resp.error_msg()
@@ -117,8 +114,10 @@ class TestBaseCase(TestCase):
 
     def test_base_type(self):
         resp = self.session.execute('FETCH PROP ON person "Bob" YIELD person.name, person.age, person.grade,'
-                                    'person.friends, person.book_num, person.birthday, person.start_school, person.morning, '
-                                    'person.property, person.is_girl, person.child_name, person.expend, person.first_out_city, person.hobby')
+                                    'person.friends, person.book_num, person.birthday, '
+                                    'person.start_school, person.morning, '
+                                    'person.property, person.is_girl, person.child_name, '
+                                    'person.expend, person.first_out_city, person.hobby')
         assert resp.is_succeeded(), resp.error_msg()
         assert '' == resp.error_msg()
         assert resp.latency() > 0
@@ -127,8 +126,7 @@ class TestBaseCase(TestCase):
         assert 'test_data' == resp.space_name()
         assert not resp.is_empty()
         assert 1 == resp.row_size()
-        names = ['VertexID',
-                 'person.name',
+        names = ['person.name',
                  'person.age',
                  'person.grade',
                  'person.friends',
@@ -145,24 +143,33 @@ class TestBaseCase(TestCase):
         assert names == resp.keys()
 
         assert 'Bob' == resp.row_values(0)[0].as_string()
-        assert 'Bob' == resp.row_values(0)[1].as_string()
-        assert 10 == resp.row_values(0)[2].as_int()
-        assert 3 == resp.row_values(0)[3].as_int()
-        assert 10 == resp.row_values(0)[4].as_int()
-        assert 100 == resp.row_values(0)[5].as_int()
-        assert resp.row_values(0)[6].as_datetime() == \
-               DateTimeWrapper(DateTime(2010, 9, 10, 10, 8, 2, 0))
+        assert 10 == resp.row_values(0)[1].as_int()
+        assert 3 == resp.row_values(0)[2].as_int()
+        assert 10 == resp.row_values(0)[3].as_int()
+        assert 100 == resp.row_values(0)[4].as_int()
+        return_data_time_val = resp.row_values(0)[5].as_datetime()
+        assert return_data_time_val == \
+            DateTimeWrapper(DateTime(2010, 9, 10, 2, 8, 2, 0))
+        assert '2010-09-10T10:08:02.000000' == return_data_time_val.get_local_datetime_str()
+        assert 'utc datetime: 2010-09-10T02:08:02.000000, timezone_offset: 28800' == str(
+            return_data_time_val)
 
-        assert DateWrapper(Date(2017, 9, 10)) == resp.row_values(0)[7].as_date()
+        assert DateWrapper(Date(2017, 9, 10)) == resp.row_values(0)[
+            6].as_date()
 
-        assert TimeWrapper(Time(7, 10, 0, 0)) == resp.row_values(0)[8].as_time()
+        expected_time_val = TimeWrapper(Time(23, 10, 0, 0))
+        return_time_val = resp.row_values(0)[7].as_time()
+        assert expected_time_val == return_time_val
+        assert '07:10:00.000000' == return_time_val.get_local_time_str()
+        assert 'utc time: 23:10:00.000000, timezone_offset: 28800' == str(
+            return_time_val)
 
-        assert 1000.0 == resp.row_values(0)[9].as_double()
-        assert False == resp.row_values(0)[10].as_bool()
-        assert 'Hello Worl' == resp.row_values(0)[11].as_string()
-        assert 100.0 == resp.row_values(0)[12].as_double()
-        assert 1111 == resp.row_values(0)[13].as_int()
-        assert Null(Null.__NULL__) == resp.row_values(0)[14].as_null()
+        assert 1000.0 == resp.row_values(0)[8].as_double()
+        assert False == resp.row_values(0)[9].as_bool()
+        assert 'Hello Worl' == resp.row_values(0)[10].as_string()
+        assert 100.0 == resp.row_values(0)[11].as_double()
+        assert 1111 == resp.row_values(0)[12].as_int()
+        assert Null(Null.__NULL__) == resp.row_values(0)[13].as_null()
 
     def test_list_type(self):
         resp = self.session.execute("YIELD ['name', 'age', 'birthday'];")
@@ -172,7 +179,8 @@ class TestBaseCase(TestCase):
         assert ["name", "age", "birthday"] == result
 
     def test_set_type(self):
-        resp = self.session.execute("YIELD {'name', 'name', 'age', 'birthday'};")
+        resp = self.session.execute(
+            "YIELD {'name', 'name', 'age', 'birthday'};")
         assert resp.is_succeeded()
         assert 1 == resp.row_size()
         assert resp.row_values(0)[0].is_set()
@@ -180,7 +188,8 @@ class TestBaseCase(TestCase):
         assert sorted(["name", "age", "birthday"]) == sorted(result)
 
     def test_map_type(self):
-        resp = self.session.execute("YIELD {name:'Tom', age:18, birthday: '2010-10-10'};")
+        resp = self.session.execute(
+            "YIELD {name:'Tom', age:18, birthday: '2010-10-10'};")
         assert resp.is_succeeded()
         assert 1 == resp.row_size()
         assert resp.row_values(0)[0].is_map()
@@ -220,16 +229,71 @@ class TestBaseCase(TestCase):
                        ':person{hobby: __NULL__, expend: 100.0, book_num: 100, ' \
                        'property: 1000.0, grade: 3, child_name: "Hello Worl", ' \
                        'start_school: 2017-09-10, friends: 10, ' \
-                       'morning: 07:10:00.000000, first_out_city: 1111, ' \
-                       'name: "Bob", age: 10, birthday: 2010-09-10T10:08:02.000000, is_girl: False})' \
+                       'morning: utc time: 23:10:00.000000, timezone_offset: 28800, first_out_city: 1111, ' \
+                       'name: "Bob", age: 10, ' \
+                       'birthday: utc datetime: 2010-09-10T02:08:02.000000, timezone_offset: 28800, is_girl: False})' \
                        '-[:friend@0{end_year: 2020, start_year: 2018}]->' \
                        '("Lily" :student{name: "Lily"} ' \
-                       ':person{is_girl: False, birthday: 2010-09-10T10:08:02.000000, age: 9, ' \
+                       ':person{is_girl: False, ' \
+                       'birthday: utc datetime: 2010-09-10T02:08:02.000000, timezone_offset: 28800, age: 9, ' \
                        'book_num: 100, grade: 3, property: 1000.0, hobby: __NULL__, expend: 100.0, ' \
-                       'start_school: 2017-09-10, child_name: "Hello Worl", morning: 07:10:00.000000, ' \
+                       'start_school: 2017-09-10, child_name: "Hello Worl", ' \
+                       'morning: utc time: 23:10:00.000000, timezone_offset: 28800, ' \
                        'friends: 10, first_out_city: 1111, name: "Lily"})'
         assert expected_str == str(path)
 
         assert resp.whole_latency() > 100
 
 
+class TestExecuteJson(TestBaseCase):
+    def test_basic_types(self):
+        resp = self.session.execute_json(
+            'YIELD 1, 2.2, "hello", [1,2,"abc"], {key: "value"}, "汉字"')
+        exp = [1, 2.2, "hello", [1, 2, "abc"], {"key": "value"}, "汉字"]
+        json_obj = json.loads(resp)
+
+	    # Get errorcode
+        resp_error_code = json_obj["errors"][0]["code"]
+        assert 0 == resp_error_code
+
+        # Get data
+        assert exp == json_obj["results"][0]["data"][0]["row"]
+
+        # Get space name
+        respSpace = json_obj["results"][0]["spaceName"]
+        assert "test_data" == respSpace
+
+    def test_complex_types(self):
+        resp = self.session.execute_json(
+            'MATCH (v:person {name: "Bob"}) RETURN v')
+        exp = [{"person.age":            10,
+               "person.birthday":       '2010-09-10T02:08:02.0Z',
+                "person.book_num":       100,
+                "person.child_name":     "Hello Worl",
+                "person.expend":         100,
+                "person.first_out_city": 1111,
+                "person.friends":        10,
+                "person.grade":          3,
+                "person.hobby":          None,
+                "person.is_girl":        False,
+                "person.morning":        '23:10:00.000000Z',
+                "person.name":           "Bob",
+                "person.property":       1000,
+                "person.start_school":   '2017-09-10',
+                "student.name":          "Bob", }]
+        json_obj = json.loads(resp)
+        assert exp == json_obj["results"][0]["data"][0]["row"]
+
+    def test_error(self):
+        resp = self.session.execute_json(
+            'MATCH (v:invalidTag {name: \"Bob\"}) RETURN v')
+
+        json_obj = json.loads(resp)
+
+        error_code = -1009
+        resp_error_code = json_obj["errors"][0]["code"]
+        assert error_code == resp_error_code
+
+        error_msg = "SemanticError: `invalidTag': Unknown tag"
+        resp_error_msg = json_obj["errors"][0]["message"]
+        assert error_msg == resp_error_msg

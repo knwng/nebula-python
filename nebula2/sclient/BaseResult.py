@@ -45,6 +45,11 @@ class VertexData(object):
             self._tag_name = names[0]
 
     def get_id(self):
+        """get vertex id, if the space vid_type is int, you can use get_id().as_int(),
+        if the space vid_type is fixed_string, you can use get_id().as_string()
+
+        :return: ValueWrapper
+        """
         if len(self._row.values) < 1:
             raise RuntimeError('The row value is bad format, '
                                'get vertex id failed: len is {}'
@@ -52,8 +57,8 @@ class VertexData(object):
         return ValueWrapper(self._row.values[0], self._decode_type)
 
     def as_node(self):
-        """
-        convert the vertex data to structure Node
+        """convert the vertex data to structure Node
+
         :return: Node
         """
         if len(self._row.values) < self.PROP_START_INDEX:
@@ -73,18 +78,18 @@ class VertexData(object):
             index = index + 1
         vertex.tags.append(tag)
 
-        return Node(vertex, self._decode_type)
+        return Node(vertex).set_decode_type(self._decode_type)
 
     def get_prop_values(self):
-        """
-        get all prop values from the vertex data
+        """get all prop values from the vertex data
+
         :return: list<ValueWrapper>
         """
         index = self.PROP_START_INDEX
         prop_values = []
         while index < len(self._row.values):
             prop_values.append(ValueWrapper(self._row.values[index],
-                                            self._decode_type))
+                                            decode_type=self._decode_type))
             index = index + 1
         return prop_values
 
@@ -121,6 +126,11 @@ class EdgeData(object):
             self._edge_name = names[0]
 
     def get_src_id(self):
+        """get src id, if the space vid_type is int, you can use get_src_id().as_int(),
+        if the space vid_type is fixed_string, you can use get_src_id().as_string()
+
+        :return: ValueWrapper
+        """
         if len(self._row.values) < 1:
             raise RuntimeError('The row value is bad format, '
                                'get edge src id failed: len is {}'
@@ -128,9 +138,17 @@ class EdgeData(object):
         return ValueWrapper(self._row.values[0], self._decode_type)
 
     def get_edge_name(self):
+        """get edge name
+
+        :return: edge name
+        """
         return self._edge_name.decode(self._decode_type)
 
     def get_ranking(self):
+        """get edge ranking
+
+        :return: ranking
+        """
         if len(self._row.values) < 3:
             raise RuntimeError('The row value is bad format, '
                                'get edge ranking failed: len is {}'
@@ -139,17 +157,21 @@ class EdgeData(object):
         return self._row.values[2].get_iVal()
 
     def get_dst_id(self):
+        """get dst id, if the space vid_type is int, you can use get_dst_id().as_int(),
+        if the space vid_type is fixed_string, you can use get_dst_id().as_string()
+
+        :return: ValueWrapper
+        """
         if len(self._row.values) < 4:
             raise RuntimeError('The row value is bad format, '
                                'get edge dst id failed: len is {}'
                                .format(len(self._row.values)))
-        assert self._row.values[3].getType() == ttypes.Value.SVAL
         return ValueWrapper(self._row.values[3], self._decode_type)
 
     def as_relationship(self):
-        """
-        convert the edge data to structure Relationship
-        :return: Node
+        """convert the edge data to structure Relationship
+
+        :return: Relationship
         """
         if len(self._row.values) < self.PROP_START_INDEX:
             raise RuntimeError('The row value is bad format, '
@@ -167,17 +189,17 @@ class EdgeData(object):
             edge.props[self._col_names[index]] = self._row.values[index]
             index = index + 1
 
-        return Relationship(edge, self._decode_type)
+        return Relationship(edge).set_decode_type(self._decode_type)
 
     def get_prop_values(self):
-        """
-        get all prop values from the edge data
+        """get all prop values from the edge data
+
         :return: list<ValueWrapper>
         """
         index = self.PROP_START_INDEX
         prop_values = []
         while index < len(self._row.values):
-            prop_values.append(ValueWrapper(self._row.values[index]))
+            prop_values.append(ValueWrapper(self._row.values[index], decode_type=self._decode_type))
             index = index + 1
         return prop_values
 
@@ -202,8 +224,8 @@ class BaseResult(object):
             self._size += len(data_set.rows)
 
     def get_data_set(self):
-        """
-        get_data_set: return the origin values, the string type is binary
+        """get DataSet, it's the origin values, the string type is binary
+
         :return: DataSet
         """
         result = None
@@ -218,8 +240,8 @@ class BaseResult(object):
         return result
 
     def get_data_set_wrapper(self):
-        """
-        get_data_set_wrapper:
+        """get DataSetWrapper, it's the wrapper for DataSet value, the string type is str
+
         :return: DataSetWrapper
         """
         result = None
@@ -243,8 +265,8 @@ class BaseResult(object):
         return self
 
     def __next__(self):
-        """
-        The VertexData or EdgeData iterator
+        """The VertexData or EdgeData iterator
+
         :return: VertexData or EdgeData Iterator
         """
         if len(self._data_sets) == 0 or self._pos >= self._size - 1:

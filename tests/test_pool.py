@@ -10,6 +10,7 @@ import sys
 import os
 import threading
 import time
+import pytest
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.join(current_dir, '..')
@@ -37,6 +38,8 @@ class TestConnectionPool(TestCase):
         self.configs = Config()
         self.configs.min_connection_pool_size = 2
         self.configs.max_connection_pool_size = 4
+        self.configs.idle_time = 2000
+        self.configs.interval_check = 2
         self.pool = ConnectionPool()
         assert self.pool.init(self.addresses, self.configs)
         assert self.pool.connnects() == 2
@@ -105,6 +108,7 @@ class TestConnectionPool(TestCase):
             session.release()
 
         assert self.pool.in_used_connects() == 0
+        assert self.pool.connnects() == 4
 
         # test get session after release
         for num in range(0, self.configs.max_connection_pool_size - 1):
@@ -114,6 +118,10 @@ class TestConnectionPool(TestCase):
             sessions.append(session)
 
         assert self.pool.in_used_connects() == 3
+        assert self.pool.connnects() == 4
+        # test the idle connection delete
+        time.sleep(5)
+        assert self.pool.connnects() == 3
 
     def test_stop_close(self):
         session = self.pool.get_session('root', 'nebula')
@@ -134,6 +142,26 @@ class TestConnectionPool(TestCase):
             assert True
         except Exception as e:
             assert False, "We don't expect reach here:".format(e)
+
+    @pytest.mark.skip(reason="the test data without nba")
+    def test_timeout(self):
+        config = Config()
+        config.timeout = 1000
+        config.max_connection_pool_size = 1
+        pool = ConnectionPool()
+        assert pool.init([('127.0.0.1', 9669)], config)
+        session = pool.get_session('root', 'nebula')
+        try:
+            resp = session.execute('USE nba;GO 1000 STEPS FROM \"Tim Duncan\" OVER like')
+            assert False
+        except IOErrorException as e:
+            assert True
+            assert str(e).find("Read timed out")
+        session.release()
+        try:
+            session = pool.get_session('root', 'nebula')
+        except IOErrorException as e:
+            assert False
 
 
 def test_multi_thread():
@@ -158,7 +186,7 @@ def test_multi_thread():
             space_name = 'space_' + threading.current_thread().getName()
 
             session.execute('DROP SPACE %s' % space_name)
-            resp = session.execute('CREATE SPACE IF NOT EXISTS %s' % space_name)
+            resp = session.execute('CREATE SPACE IF NOT EXISTS %s(vid_type=FIXED_STRING(8))' % space_name)
             if not resp.is_succeeded():
                 raise RuntimeError('CREATE SPACE failed: {}'.format(resp.error_msg()))
 

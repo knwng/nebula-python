@@ -5,7 +5,7 @@
 #
 # This source code is licensed under Apache 2.0 License,
 # attached with Common Clause Condition 1.0, found in the LICENSES directory.
-
+import copy
 import sys
 import os
 from datetime import date
@@ -25,6 +25,7 @@ from nebula2.common.ttypes import (
     Date,
     NList,
     NMap,
+    Geography,
     ErrorCode
 )
 from nebula2.common import ttypes
@@ -41,29 +42,31 @@ from nebula2.data.DataObject import (
     DateWrapper,
     Null,
     Segment,
-    DataSetWrapper
+    DataSetWrapper,
+    GeographyWrapper
 )
 
 
 class TestBaseCase(TestCase):
     @classmethod
-    def get_vertex_value(self, vid):
+    def get_vertex_value(cls, vid, empty_props=False):
         vertex = ttypes.Vertex()
         vertex.vid = ttypes.Value(sVal=vid)
         vertex.tags = list()
         for i in range(0, 3):
             tag = ttypes.Tag()
             tag.name = ('tag{}'.format(i)).encode('utf-8')
-            tag.props = dict()
-            for j in range(0, 5):
-                value = ttypes.Value()
-                value.set_iVal(j)
-                tag.props[('prop{}'.format(j)).encode('utf-8')] = value
+            if not empty_props:
+                tag.props = dict()
+                for j in range(0, 5):
+                    value = ttypes.Value()
+                    value.set_iVal(j)
+                    tag.props[('prop{}'.format(j)).encode('utf-8')] = value
             vertex.tags.append(tag)
         return vertex
 
     @classmethod
-    def get_edge_value(self, src_id, dst_id, is_reverse=False):
+    def get_edge_value(cls, src_id, dst_id, is_reverse=False, empty_props=False):
         edge = ttypes.Edge()
         if not is_reverse:
             edge.src = ttypes.Value(sVal=src_id)
@@ -74,21 +77,22 @@ class TestBaseCase(TestCase):
         edge.type = 1
         edge.name = b'classmate'
         edge.ranking = 100
-        edge.props = dict()
-        for i in range(0, 5):
-            value = ttypes.Value()
-            value.set_iVal(i)
-            edge.props[('prop{}'.format(i)).encode('utf-8')] = value
+        if not empty_props:
+            edge.props = dict()
+            for i in range(0, 5):
+                value = ttypes.Value()
+                value.set_iVal(i)
+                edge.props[('prop{}'.format(i)).encode('utf-8')] = value
         return edge
 
     @classmethod
-    def get_path_value(self, start_id, steps=5):
+    def get_path_value(cls, start_id, steps=5):
         path = ttypes.Path()
-        path.src = self.get_vertex_value(start_id)
+        path.src = cls.get_vertex_value(start_id)
         path.steps = list()
         for i in range(0, steps):
             step = ttypes.Step()
-            step.dst = self.get_vertex_value(('vertex{}'.format(i)).encode('utf-8'))
+            step.dst = cls.get_vertex_value(('vertex{}'.format(i)).encode('utf-8'))
             step.type = 1 if i % 2 == 0 else -1
             step.name = b'classmate'
             step.ranking = 100
@@ -101,7 +105,18 @@ class TestBaseCase(TestCase):
         return path
 
     @classmethod
-    def get_data_set(self):
+    def get_geography_value(cls, x, y):
+        coord = ttypes.Coordinate()
+        coord.x = x
+        coord.y = y
+        point = ttypes.Point()
+        point.coord = coord
+        geog = ttypes.Geography()
+        geog.set_ptVal(point)
+        return geog
+
+    @classmethod
+    def get_data_set(cls):
         data_set = ttypes.DataSet()
         data_set.column_names = [b"col1_empty",
                                  b"col2_null",
@@ -117,7 +132,8 @@ class TestBaseCase(TestCase):
                                  b"col12_datetime",
                                  b"col13_vertex",
                                  b"col14_edge",
-                                 b"col15_path"]
+                                 b"col15_path",
+                                 b"col16_geography"]
         row = ttypes.Row()
         row.values = []
         value1 = ttypes.Value()
@@ -168,21 +184,24 @@ class TestBaseCase(TestCase):
         value12.set_dtVal(DateTime(2020, 10, 1, 10, 10, 10, 10000))
         row.values.append(value12)
         value13 = ttypes.Value()
-        value13.set_vVal(self.get_vertex_value(b"Tom"))
+        value13.set_vVal(cls.get_vertex_value(b"Tom"))
         row.values.append(value13)
         value14 = ttypes.Value()
-        value14.set_eVal(self.get_edge_value(b"Tom", b"Lily"))
+        value14.set_eVal(cls.get_edge_value(b"Tom", b"Lily"))
         row.values.append(value14)
         value15 = ttypes.Value()
-        value15.set_pVal(self.get_path_value(b"Tom", 3))
+        value15.set_pVal(cls.get_path_value(b"Tom", 3))
         row.values.append(value15)
+        value16 = ttypes.Value()
+        value16.set_ggVal(cls.get_geography_value(4.8, 5.2))
+        row.values.append(value16)
         data_set.rows = []
         data_set.rows.append(row)
         data_set.rows.append(row)
         return data_set
 
     @classmethod
-    def get_result_set(self):
+    def get_result_set(cls):
         resp = graphTtype.ExecutionResponse()
         resp.error_code = ErrorCode.E_BAD_PERMISSION
         resp.error_msg = b"Permission"
@@ -190,7 +209,7 @@ class TestBaseCase(TestCase):
         resp.space_name = b"test"
         resp.latency_in_us = 100
 
-        resp.data = self.get_data_set()
+        resp.data = cls.get_data_set()
         return ResultSet(resp, 100)
 
 
@@ -295,17 +314,26 @@ class TesValueWrapper(TestBaseCase):
         time.minute = 20
         time.sec = 10
         time.microsec = 100
-        value = ttypes.Value(tVal = time)
+        value = ttypes.Value(tVal=time)
         value_wrapper = ValueWrapper(value)
         assert value_wrapper.is_time()
 
         time_val = value_wrapper.as_time()
+        time_val.set_timezone_offset(28800)
         assert isinstance(time_val, TimeWrapper)
         assert time_val.get_hour() == 10
         assert time_val.get_minute() == 20
         assert time_val.get_sec() == 10
         assert time_val.get_microsec() == 100
-        assert '10:20:10.000100' == str(time_val)
+        assert 'utc time: 10:20:10.000100, timezone_offset: 28800' == str(time_val)
+        assert '18:20:10.000100' == time_val.get_local_time_str()
+        new_time = copy.deepcopy(time)
+        new_time.hour = 18
+        assert new_time == time_val.get_local_time()
+
+        new_time_2 = copy.deepcopy(time)
+        new_time_2.hour = 12
+        assert new_time_2 == time_val.get_local_time_by_timezone_offset(7200)
 
     def test_as_date(self):
         date = Date()
@@ -337,12 +365,21 @@ class TesValueWrapper(TestBaseCase):
         assert value_wrapper.is_datetime()
 
         datetime_val = value_wrapper.as_datetime()
+        datetime_val.set_timezone_offset(28800)
         assert isinstance(datetime_val, DateTimeWrapper)
         assert datetime_val.get_hour() == 10
         assert datetime_val.get_minute() == 20
         assert datetime_val.get_sec() == 10
         assert datetime_val.get_microsec() == 100
-        assert '123-02-01T10:20:10.000100' == str(datetime_val)
+        assert 'utc datetime: 123-02-01T10:20:10.000100, timezone_offset: 28800' == str(datetime_val)
+        assert '123-02-01T18:20:10.000100' == datetime_val.get_local_datetime_str()
+        new_datetime = copy.deepcopy(datetime)
+        new_datetime.hour = 18
+        assert new_datetime == datetime_val.get_local_datetime()
+
+        new_datetime_2 = copy.deepcopy(datetime)
+        new_datetime_2.hour = 12
+        assert new_datetime_2 == datetime_val.get_local_datetime_by_timezone_offset(7200)
 
     def test_as_node(self):
         value = ttypes.Value()
@@ -352,6 +389,15 @@ class TesValueWrapper(TestBaseCase):
 
         node = value_wrapper.as_node()
         assert isinstance(node, Node)
+        assert node.get_id().as_string() == 'Tom'
+        assert node.has_tag('tag1')
+        assert node.prop_names('tag1').sort() == ['prop0', 'prop1', 'prop2', 'prop3', 'prop4'].sort()
+        expect_values = [(v.as_int()) for v in node.prop_values('tag1')]
+        assert expect_values == [0, 1, 2, 3, 4]
+        assert node.tags() == ['tag0', 'tag1', 'tag2']
+        assert list(node.properties('tag1').keys()).sort() == ['prop0', 'prop1', 'prop2', 'prop3', 'prop4'].sort()
+        expect_values = [(v.as_int()) for v in node.properties('tag1').values()]
+        assert expect_values == [0, 1, 2, 3, 4]
 
     def test_as_relationship(self):
         value = ttypes.Value(eVal=self.get_edge_value(b'Tom', b'Lily'))
@@ -375,6 +421,24 @@ class TesValueWrapper(TestBaseCase):
         assert isinstance(reversely_relationship, Relationship)
         assert reversely_relationship != relationship
 
+        relationship.ranking() == 100
+        relationship.edge_name() == 'classmate'
+        relationship.start_vertex_id().as_string() == 'Lily'
+        relationship.start_vertex_id().as_string() == 'Tom'
+        assert relationship.keys() == ['prop0', 'prop1', 'prop2', 'prop3', 'prop4']
+        expect_values = [(v.as_int()) for v in relationship.values()]
+        assert expect_values == [0, 1, 2, 3, 4]
+        assert list(relationship.properties().keys()).sort() == ['prop0', 'prop1', 'prop2', 'prop3', 'prop4'].sort()
+        expect_values = [(v.as_int()) for v in relationship.properties().values()]
+        assert expect_values == [0, 1, 2, 3, 4]
+
+        # test empty props
+        value = ttypes.Value(eVal=self.get_edge_value(b'Tom', b'Lily', empty_props=True))
+        relationship = ValueWrapper(value).as_relationship()
+        assert relationship.keys() == []
+        assert relationship.values() == []
+        assert len(relationship.properties()) == 0
+
     def test_as_path(self):
         value = ttypes.Value()
         value.set_pVal(self.get_path_value(b'Tom'))
@@ -383,6 +447,15 @@ class TesValueWrapper(TestBaseCase):
 
         node = vaue_wrapper.as_path()
         assert isinstance(node, PathWrapper)
+
+    def test_as_geography(self):
+        value = ttypes.Value()
+        value.set_ggVal(self.get_geography_value(3.0, 5.2))
+        vaue_wrapper = ValueWrapper(value)
+        assert vaue_wrapper.is_geography()
+
+        geog = vaue_wrapper.as_geography()
+        assert isinstance(geog, GeographyWrapper)
 
 
 class TestNode(TestBaseCase):
@@ -401,8 +474,8 @@ class TestNode(TestBaseCase):
         assert ['tag0', 'tag1', 'tag2'] == node.tags()
 
         expect_propertys = {}
-        for key in node.propertys('tag2').keys():
-            expect_propertys[key] = node.propertys('tag2')[key].as_int()
+        for key in node.properties('tag2').keys():
+            expect_propertys[key] = node.properties('tag2')[key].as_int()
         assert {'prop0': 0, 'prop1': 1, 'prop2': 2, 'prop3': 3, 'prop4': 4} == expect_propertys
 
 
@@ -423,8 +496,8 @@ class TestRelationship(TestBaseCase):
         assert ['prop0', 'prop1', 'prop2', 'prop3', 'prop4'] == relationship.keys()
 
         expect_propertys = {}
-        for key in relationship.propertys().keys():
-            expect_propertys[key] = relationship.propertys()[key].as_int()
+        for key in relationship.properties().keys():
+            expect_propertys[key] = relationship.properties()[key].as_int()
         assert {'prop0': 0, 'prop1': 1, 'prop2': 2, 'prop3': 3, 'prop4': 4} == expect_propertys
 
 
@@ -483,6 +556,7 @@ class TestDatesetWrapper(TestBaseCase):
             assert data_set_warpper1.row_values(i)[12] == data_set_warpper2.row_values(i)[12]
             assert data_set_warpper1.row_values(i)[13] == data_set_warpper2.row_values(i)[13]
             assert data_set_warpper1.row_values(i)[14] == data_set_warpper2.row_values(i)[14]
+            assert data_set_warpper1.row_values(i)[15] == data_set_warpper2.row_values(i)[15]
             assert data_set_warpper1.row_values(i)[9] != data_set_warpper2.row_values(i)[8]
 
         assert 2 == row_count
@@ -523,9 +597,10 @@ class TestResultset(TestBaseCase):
                        "col12_datetime",
                        "col13_vertex",
                        "col14_edge",
-                       "col15_path"]
+                       "col15_path",
+                       "col16_geography"]
         assert result.keys() == expect_keys
-        assert result.col_size() == 15
+        assert result.col_size() == 16
         assert result.row_size() == 2
 
         # test column_values
@@ -533,13 +608,13 @@ class TestResultset(TestBaseCase):
         assert result.column_values("col6_string")[0].is_string()
         assert result.column_values("col6_string")[0].as_string() == "hello world"
         # test row_values
-        assert len(result.row_values(0)) == 15
+        assert len(result.row_values(0)) == 16
         assert result.row_values(0)[5].is_string()
         assert result.row_values(0)[5].as_string() == "hello world"
 
         # test rows
         assert len(result.rows()) == 2
-        assert len(result.rows()[0].values) == 15
+        assert len(result.rows()[0].values) == 16
         assert isinstance(result.rows()[0].values[0], Value)
         assert isinstance(result.get_row_types(), list)
 
@@ -558,19 +633,20 @@ class TestResultset(TestBaseCase):
                                           ttypes.Value.DTVAL,
                                           ttypes.Value.VVAL,
                                           ttypes.Value.EVAL,
-                                          ttypes.Value.PVAL]
+                                          ttypes.Value.PVAL,
+                                          ttypes.Value.GGVAL]
 
         # test record
         in_use = False
         for record in result:
             in_use = True
-            record.size() == 15
+            record.size() == 16
 
             # test keys()
             assert record.keys() == expect_keys
             # test values()
             values = record.values()
-            assert len(record.values()) == 15
+            assert len(record.values()) == 16
             assert record.values()[0].is_empty()
             assert record.values()[5].is_string()
             assert record.values()[5].is_string()
@@ -616,12 +692,13 @@ class TestResultset(TestBaseCase):
             assert record.get_value(12).is_vertex()
             assert record.get_value(13).is_edge()
             assert record.get_value(14).is_path()
+            assert record.get_value(15).is_geography()
         assert in_use
 
         # test use iterator again
         in_use = False
         for record in result:
             in_use = True
-            record.size() == 15
+            record.size() == 16
         assert in_use
 

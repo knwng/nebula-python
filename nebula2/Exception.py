@@ -71,8 +71,14 @@ class IOErrorException(Exception):
     E_UNKNOWN = 0
     E_ALL_BROKEN = 1
     E_CONNECT_BROKEN = 2
+    E_TIMEOUT = 3
+    E_NOT_OPEN = 4
 
     def __init__(self, code=E_UNKNOWN, message=None):
         Exception.__init__(self, message)
         self.type = code
+        self.message = message
 
+class ClientServerIncompatibleException(Exception):
+    def __init__(self, message):
+        Exception.__init__(self, f'Current client is not compatible with the remote server, please check the version: {message}')

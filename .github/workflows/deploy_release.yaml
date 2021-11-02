@@ -1,31 +1,23 @@
-name: Test ci
+name: Upload package to pypi
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-  schedule:
-    - cron: '0 6 * * *'
+  release:
+    types:
+      - published
 
 jobs:
   ci:
     runs-on: ubuntu-18.04
-    strategy:
-      max-parallel: 2
-      matrix:
-        python-version: [3.6, 3.7]
 
     steps:
-    - uses: actions/checkout@v1
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v1
-      with:
-        python-version: ${{ matrix.python-version }}
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
+        python3 -m pip install --upgrade pip
+        pip3 install setuptools wheel twine
         pip install -r requirements-dev.txt
+
     - name: Test with pytest
       run: |
         docker-compose up -d
@@ -45,3 +37,11 @@ jobs:
         sleep 45
         pytest -s -v test_ssl_connection.py::TestSSLConnectionSelfSigned
       working-directory: tests
+
+    - name: Build and publish
+      env:
+        TWINE_USERNAME: ${{ secrets.PYPI_NAME }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+      run: |
+        python3 setup.py sdist bdist_wheel
+        twine upload dist/*
